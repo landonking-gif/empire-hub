@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { TaskStatusCard, TaskStatus } from "@/components/dashboard/TaskStatusCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { activeTasks, recentTasks, activities } from "@/data/mockData";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAllData } from "@/hooks/useKingAI";
 import {
   Search,
   Filter,
@@ -16,44 +17,89 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
 
-const allTasks = [
-  ...activeTasks,
-  ...recentTasks,
-  {
-    id: "8",
-    name: "Competitor Analysis Report",
-    status: "pending" as TaskStatus,
-    module: "BusinessAnalyzer",
-    startedAt: "Queued",
-  },
-  {
-    id: "9",
-    name: "Email Campaign Setup",
-    status: "pending" as TaskStatus,
-    module: "MarketingEngine",
-    startedAt: "Queued",
-  },
-];
-
-const statusCounts = {
-  all: allTasks.length,
-  running: allTasks.filter((t) => t.status === "running").length,
-  pending: allTasks.filter((t) => t.status === "pending").length,
-  completed: allTasks.filter((t) => t.status === "completed").length,
-  failed: allTasks.filter((t) => t.status === "failed").length,
-};
-
 const TasksPage = () => {
+  const { data, isLoading, isError, error, refetch } = useAllData({ refetchInterval: 5000 });
   const [filter, setFilter] = useState<TaskStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Combine active and recent tasks from backend
+  const allTasks = useMemo(() => {
+    const active = data?.activeTasks?.map(t => ({
+      id: t.id,
+      name: t.name,
+      status: (t.status === 'queued' ? 'pending' : t.status) as TaskStatus,
+      module: t.module || 'System',
+      progress: t.progress,
+      startedAt: t.created_at ? new Date(t.created_at).toLocaleTimeString() : undefined,
+    })) || [];
+
+    const recent = data?.recentTasks?.map(t => ({
+      id: t.id,
+      name: t.name,
+      status: t.status as TaskStatus,
+      module: t.module || 'System',
+      startedAt: t.startedAt ? new Date(t.startedAt).toLocaleTimeString() : undefined,
+    })) || [];
+
+    return [...active, ...recent];
+  }, [data?.activeTasks, data?.recentTasks]);
+
+  const activities = useMemo(() => {
+    return data?.activities?.map(a => ({
+      id: a.id,
+      message: a.message,
+      type: mapActivityType(a.type || a.level || 'info'),
+      timestamp: a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : 'now',
+      module: a.module || undefined,
+    })) || [];
+  }, [data?.activities]);
+
+  function mapActivityType(type: string): "success" | "error" | "info" | "action" | "thinking" | "code" | "business" {
+    const lower = type.toLowerCase();
+    if (lower.includes('success') || lower.includes('complete')) return 'success';
+    if (lower.includes('error') || lower.includes('fail')) return 'error';
+    if (lower.includes('action') || lower.includes('execute')) return 'action';
+    if (lower.includes('think') || lower.includes('ai')) return 'thinking';
+    if (lower.includes('code') || lower.includes('deploy')) return 'code';
+    if (lower.includes('business') || lower.includes('revenue')) return 'business';
+    return 'info';
+  }
+
+  const statusCounts = {
+    all: allTasks.length,
+    running: allTasks.filter((t) => t.status === "running").length,
+    pending: allTasks.filter((t) => t.status === "pending").length,
+    completed: allTasks.filter((t) => t.status === "completed").length,
+    failed: allTasks.filter((t) => t.status === "failed").length,
+  };
 
   const filteredTasks = allTasks.filter((task) => {
     const matchesFilter = filter === "all" || task.status === filter;
     const matchesSearch = task.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
+
+  if (isError) {
+    return (
+      <DashboardLayout>
+        <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
+          <WifiOff className="w-16 h-16 text-destructive mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Cannot Connect to Backend</h2>
+          <p className="text-muted-foreground mb-4 text-center max-w-md">
+            {error?.message || 'Failed to connect to the King AI backend.'}
+          </p>
+          <Button onClick={() => refetch()} className="gap-2">
+            <RefreshCw className="w-4 h-4" />
+            Retry Connection
+          </Button>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -113,9 +159,9 @@ const TasksPage = () => {
               className="pl-10 bg-secondary/50 border-border/50"
             />
           </div>
-          <Button variant="outline" className="gap-2">
-            <Filter className="w-4 h-4" />
-            Filters
+          <Button variant="outline" className="gap-2" onClick={() => refetch()}>
+            <RotateCcw className="w-4 h-4" />
+            Refresh
           </Button>
         </div>
 
@@ -128,53 +174,67 @@ const TasksPage = () => {
                 <h3 className="text-lg font-semibold">
                   {filter === "all" ? "All Tasks" : `${filter.charAt(0).toUpperCase() + filter.slice(1)} Tasks`}
                 </h3>
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <RotateCcw className="w-4 h-4" />
-                  Refresh
-                </Button>
+                <Badge variant="outline">
+                  {filteredTasks.length} tasks
+                </Badge>
               </div>
-              <div className="space-y-3 max-h-[600px] overflow-y-auto scrollbar-thin">
-                {filteredTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-center gap-4 p-4 rounded-lg bg-secondary/30 border border-border/50 hover:border-primary/30 transition-colors"
-                  >
-                    <div className={`p-2 rounded-lg ${
-                      task.status === "running" ? "bg-primary/10" :
-                      task.status === "completed" ? "bg-success/10" :
-                      task.status === "failed" ? "bg-destructive/10" :
-                      "bg-warning/10"
-                    }`}>
-                      {task.status === "running" && <Loader2 className="w-4 h-4 text-primary animate-spin" />}
-                      {task.status === "pending" && <Clock className="w-4 h-4 text-warning" />}
-                      {task.status === "completed" && <CheckCircle className="w-4 h-4 text-success" />}
-                      {task.status === "failed" && <XCircle className="w-4 h-4 text-destructive" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{task.name}</p>
-                      <p className="text-sm text-muted-foreground">{task.module}</p>
-                    </div>
-                    {"progress" in task && task.progress !== undefined && (
-                      <div className="w-24">
-                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary rounded-full transition-all"
-                            style={{ width: `${task.progress}%` }}
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground text-right mt-1">
-                          {task.progress}%
-                        </p>
+              
+              {isLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
+                </div>
+              ) : filteredTasks.length === 0 ? (
+                <div className="text-center py-12">
+                  <CheckCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No tasks found</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[600px] overflow-y-auto scrollbar-thin">
+                  {filteredTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex items-center gap-4 p-4 rounded-lg bg-secondary/30 border border-border/50 hover:border-primary/30 transition-colors"
+                    >
+                      <div className={`p-2 rounded-lg ${
+                        task.status === "running" ? "bg-primary/10" :
+                        task.status === "completed" ? "bg-success/10" :
+                        task.status === "failed" ? "bg-destructive/10" :
+                        "bg-warning/10"
+                      }`}>
+                        {task.status === "running" && <Loader2 className="w-4 h-4 text-primary animate-spin" />}
+                        {task.status === "pending" && <Clock className="w-4 h-4 text-warning" />}
+                        {task.status === "completed" && <CheckCircle className="w-4 h-4 text-success" />}
+                        {task.status === "failed" && <XCircle className="w-4 h-4 text-destructive" />}
                       </div>
-                    )}
-                    {"startedAt" in task && (task as any).startedAt && (
-                      <span className="text-sm text-muted-foreground whitespace-nowrap">
-                        {(task as any).startedAt}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{task.name}</p>
+                        <p className="text-sm text-muted-foreground">{task.module}</p>
+                      </div>
+                      {task.progress !== undefined && (
+                        <div className="w-24">
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary rounded-full transition-all"
+                              style={{ width: `${task.progress}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground text-right mt-1">
+                            {task.progress}%
+                          </p>
+                        </div>
+                      )}
+                      {"startedAt" in task && task.startedAt && (
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">
+                          {task.startedAt}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -182,7 +242,15 @@ const TasksPage = () => {
           <div className="space-y-6">
             <div className="glass-card p-5">
               <h3 className="text-lg font-semibold mb-4">Execution Log</h3>
-              <ActivityFeed activities={activities} maxHeight="500px" />
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                </div>
+              ) : (
+                <ActivityFeed activities={activities.slice(0, 20)} maxHeight="500px" />
+              )}
             </div>
           </div>
         </div>
