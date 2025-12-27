@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ApprovalCard } from "@/components/dashboard/ApprovalCard";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { pendingApprovals } from "@/data/mockData";
-import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAllData, useApprove, useReject } from "@/hooks/useKingAI";
 import {
   Shield,
   DollarSign,
@@ -12,53 +11,52 @@ import {
   FileText,
   CheckCircle,
   History,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
-
-const approvalHistory = [
-  {
-    id: "h1",
-    title: "Domain Registration: aiwriterhub.io",
-    type: "financial",
-    decision: "approved",
-    decidedAt: "Yesterday",
-    cost: "$15",
-  },
-  {
-    id: "h2",
-    title: "Terms of Service Update",
-    type: "legal",
-    decision: "approved",
-    decidedAt: "2 days ago",
-  },
-  {
-    id: "h3",
-    title: "Aggressive Pricing Strategy",
-    type: "strategic",
-    decision: "rejected",
-    decidedAt: "3 days ago",
-  },
-];
+import { Button } from "@/components/ui/button";
 
 const ApprovalsPage = () => {
-  const { toast } = useToast();
-  const [approvals, setApprovals] = useState(pendingApprovals);
+  const { data, isLoading, isError, error, refetch } = useAllData({ refetchInterval: 5000 });
+  const approveMutation = useApprove();
+  const rejectMutation = useReject();
   const [filter, setFilter] = useState<string>("all");
 
+  // Transform backend approvals to component format
+  const pendingApprovals = useMemo(() => {
+    return data?.approvals?.map(a => ({
+      id: a.id,
+      title: a.description?.split('\n')[0] || 'Pending Approval',
+      type: mapApprovalType(a.taskType || a.type || 'technical') as "legal" | "financial" | "strategic" | "technical",
+      module: 'CEO',
+      description: a.description || '',
+      urgency: mapUrgency(a.riskLevel || 'standard') as "high" | "medium" | "low",
+      requestedAt: a.createdAt || a.created_at || new Date().toISOString(),
+      cost: undefined,
+    })) || [];
+  }, [data?.approvals]);
+
+  function mapApprovalType(type: string): string {
+    const lower = type.toLowerCase();
+    if (lower.includes('legal') || lower.includes('contract')) return 'legal';
+    if (lower.includes('financial') || lower.includes('payment') || lower.includes('cost')) return 'financial';
+    if (lower.includes('strategic') || lower.includes('decision')) return 'strategic';
+    return 'technical';
+  }
+
+  function mapUrgency(level: string): string {
+    const lower = level.toLowerCase();
+    if (lower.includes('high') || lower.includes('urgent') || lower.includes('critical')) return 'high';
+    if (lower.includes('low') || lower.includes('minor')) return 'low';
+    return 'medium';
+  }
+
   const handleApprove = (id: string) => {
-    setApprovals((prev) => prev.filter((a) => a.id !== id));
-    toast({
-      title: "Approved",
-      description: "Task has been approved and queued for execution.",
-    });
+    approveMutation.mutate({ id });
   };
 
   const handleReject = (id: string) => {
-    setApprovals((prev) => prev.filter((a) => a.id !== id));
-    toast({
-      title: "Rejected",
-      description: "Task has been rejected and archived.",
-      variant: "destructive",
-    });
+    rejectMutation.mutate({ id });
   };
 
   const filterCounts = {
@@ -69,9 +67,27 @@ const ApprovalsPage = () => {
     technical: pendingApprovals.filter((a) => a.type === "technical").length,
   };
 
-  const filteredApprovals = approvals.filter(
+  const filteredApprovals = pendingApprovals.filter(
     (a) => filter === "all" || a.type === filter
   );
+
+  if (isError) {
+    return (
+      <DashboardLayout>
+        <div className="p-6 flex flex-col items-center justify-center min-h-[60vh]">
+          <WifiOff className="w-16 h-16 text-destructive mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Cannot Connect to Backend</h2>
+          <p className="text-muted-foreground mb-4 text-center max-w-md">
+            {error?.message || 'Failed to connect to the King AI backend.'}
+          </p>
+          <Button onClick={() => refetch()} className="gap-2">
+            <RefreshCw className="w-4 h-4" />
+            Retry Connection
+          </Button>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -88,7 +104,7 @@ const ApprovalsPage = () => {
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="py-2 px-4 border-warning/50 text-warning">
-              {approvals.length} Pending
+              {pendingApprovals.length} Pending
             </Badge>
           </div>
         </div>
@@ -127,7 +143,13 @@ const ApprovalsPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Pending Approvals */}
           <div className="lg:col-span-2 space-y-4">
-            {filteredApprovals.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-40" />
+                <Skeleton className="h-40" />
+                <Skeleton className="h-40" />
+              </div>
+            ) : filteredApprovals.length === 0 ? (
               <div className="glass-card p-12 text-center">
                 <CheckCircle className="w-12 h-12 text-success mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">All Clear</h3>
@@ -155,30 +177,17 @@ const ApprovalsPage = () => {
                 Recent Decisions
               </h3>
               <div className="space-y-3">
-                {approvalHistory.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 rounded-lg bg-secondary/30 border border-border/50"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <p className="font-medium text-sm">{item.title}</p>
-                      <Badge
-                        variant="outline"
-                        className={
-                          item.decision === "approved"
-                            ? "border-success/50 text-success"
-                            : "border-destructive/50 text-destructive"
-                        }
-                      >
-                        {item.decision}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{item.decidedAt}</span>
-                      {item.cost && <span>{item.cost}</span>}
-                    </div>
-                  </div>
-                ))}
+                {isLoading ? (
+                  <>
+                    <Skeleton className="h-20" />
+                    <Skeleton className="h-20" />
+                    <Skeleton className="h-20" />
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Decision history will appear here
+                  </p>
+                )}
               </div>
             </div>
 
@@ -187,16 +196,16 @@ const ApprovalsPage = () => {
               <h3 className="text-lg font-semibold">Approval Stats</h3>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Approved this week</span>
-                  <span className="font-semibold text-success">12</span>
+                  <span className="text-muted-foreground">Total Businesses</span>
+                  <span className="font-semibold">{data?.businesses?.length || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Rejected this week</span>
-                  <span className="font-semibold text-destructive">2</span>
+                  <span className="text-muted-foreground">Active Tasks</span>
+                  <span className="font-semibold">{data?.activeTasks?.length || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Avg. response time</span>
-                  <span className="font-semibold">18 min</span>
+                  <span className="text-muted-foreground">CEO Status</span>
+                  <span className="font-semibold text-success">{data?.ceoStatus?.mode || 'Unknown'}</span>
                 </div>
               </div>
             </div>
