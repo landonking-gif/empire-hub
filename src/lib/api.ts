@@ -4,7 +4,7 @@
  */
 
 // Backend API URL - Update this if your server moves
-const API_BASE_URL = 'http://ec2-18-218-174-196.us-east-2.compute.amazonaws.com:3847';
+const API_BASE_URL = window.location.origin;
 
 export interface Business {
   id: string;
@@ -96,7 +96,7 @@ class KingAIClient {
 
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
     try {
       const response = await fetch(url, {
         ...options,

@@ -42,6 +42,7 @@ const TasksPage = () => {
       name: t.name,
       status: t.status as TaskStatus,
       module: t.module || 'System',
+      progress: undefined,
       startedAt: t.startedAt ? new Date(t.startedAt).toLocaleTimeString() : undefined,
     })) || [];
 
@@ -79,7 +80,7 @@ const TasksPage = () => {
 
   const filteredTasks = allTasks.filter((task) => {
     const matchesFilter = filter === "all" || task.status === filter;
-    const matchesSearch = task.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (task.name || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
@@ -130,11 +131,10 @@ const TasksPage = () => {
             <button
               key={status}
               onClick={() => setFilter(status as TaskStatus | "all")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
-                filter === status
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${filter === status
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
-              }`}
+                }`}
             >
               {status === "running" && <Loader2 className="w-4 h-4 animate-spin" />}
               {status === "pending" && <Clock className="w-4 h-4" />}
@@ -178,7 +178,7 @@ const TasksPage = () => {
                   {filteredTasks.length} tasks
                 </Badge>
               </div>
-              
+
               {isLoading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-20" />
@@ -198,12 +198,11 @@ const TasksPage = () => {
                       key={task.id}
                       className="flex items-center gap-4 p-4 rounded-lg bg-secondary/30 border border-border/50 hover:border-primary/30 transition-colors"
                     >
-                      <div className={`p-2 rounded-lg ${
-                        task.status === "running" ? "bg-primary/10" :
-                        task.status === "completed" ? "bg-success/10" :
-                        task.status === "failed" ? "bg-destructive/10" :
-                        "bg-warning/10"
-                      }`}>
+                      <div className={`p-2 rounded-lg ${task.status === "running" ? "bg-primary/10" :
+                          task.status === "completed" ? "bg-success/10" :
+                            task.status === "failed" ? "bg-destructive/10" :
+                              "bg-warning/10"
+                        }`}>
                         {task.status === "running" && <Loader2 className="w-4 h-4 text-primary animate-spin" />}
                         {task.status === "pending" && <Clock className="w-4 h-4 text-warning" />}
                         {task.status === "completed" && <CheckCircle className="w-4 h-4 text-success" />}

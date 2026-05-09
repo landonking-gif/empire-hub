@@ -105,7 +105,7 @@ const Index = () => {
             {error?.message || 'Failed to connect to the King AI backend.'}
           </p>
           <p className="text-sm text-muted-foreground mb-6">
-            Ensure the server is running at http://ec2-18-218-174-196.us-east-2.compute.amazonaws.com:3847
+            Ensure the server is running at {window.location.host}
           </p>
           <Button onClick={() => refetch()} className="gap-2">
             <RefreshCw className="w-4 h-4" />
@@ -126,7 +126,7 @@ const Index = () => {
               Empire Command Center
             </h1>
             <p className="text-muted-foreground mt-1">
-              {isLoading ? 'Connecting to backend...' : 
+              {isLoading ? 'Connecting to backend...' :
                 `Welcome back, Emperor. ${data?.ceoStatus?.mode ? `Mode: ${data.ceoStatus.mode}` : 'Your autonomous operations are running.'}`}
             </p>
           </div>
@@ -184,7 +184,7 @@ const Index = () => {
           {/* Left Column - Charts */}
           <div className="lg:col-span-2 space-y-6">
             <RevenueChart />
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <TaskStatusCard
                 title="Active Tasks"
